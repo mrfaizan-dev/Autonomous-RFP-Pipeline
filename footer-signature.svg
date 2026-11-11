@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="190" viewBox="0 0 900 190" role="img" aria-labelledby="title desc">
+<title id="title">Mr Faizan — Software Developer and AI Engineer</title><desc id="desc">Professional author signature with specialties in agentic AI, retrieval augmented generation, LLM engineering, web automation and full-stack development.</desc>
+<rect x="1" y="1" width="898" height="188" rx="22" fill="#F4F7FA" stroke="#D8E2EA" stroke-width="2"/>
+<rect x="1" y="1" width="9" height="188" rx="4" fill="#0E9384"/>
+<text x="42" y="83" fill="#102A43" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="1">MR FAIZAN</text>
+<text x="44" y="119" fill="#486581" font-family="Inter,Arial,sans-serif" font-size="19" font-weight="600">SOFTWARE DEVELOPER  ·  AI ENGINEER</text>
+<path d="M44 143H855" stroke="#D6E2E9" stroke-width="2"/>
+<text x="44" y="169" fill="#176B67" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="600">AGENTIC AI  ·  RAG  ·  LLM ENGINEERING  ·  WEB AUTOMATION  ·  FULL-STACK</text>
+<circle cx="853" cy="39" r="10" fill="#E5B65A"/><circle cx="853" cy="39" r="20" fill="none" stroke="#E5B65A" opacity=".35" stroke-width="2"/>
+</svg>
