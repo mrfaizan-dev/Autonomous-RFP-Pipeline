@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/hero-banner.svg" alt="Autonomous RFP Pipeline: submit an RFP URL and get an evidence-grounded proposal, checked by an AI critic and approved by a human" width="100%">
+<img src="./assets/hero-banner.svg" alt="Autonomous RFP Pipeline: submit an RFP URL and get an evidence-grounded proposal, checked by an AI critic and approved by a human" width="100%">
 
 <br>
 
