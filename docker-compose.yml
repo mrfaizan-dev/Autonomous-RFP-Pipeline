@@ -1,0 +1,143 @@
+
+name: bidforge
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    image: bidforge-backend:local
+    pull_policy: build
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    entrypoint: []
+    command:
+      - uvicorn
+      - main:fastapi_app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8800"
+
+    env_file:
+      - .env
+
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      FRONTEND_ORIGINS: "http://localhost:3001,http://127.0.0.1:3001"
+      CHECKPOINT_DB_PATH: /app/data/langgraph_checkpoints.sqlite
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+    ports:
+      - "127.0.0.1:${API_PORT:-8800}:8800"
+
+    volumes:
+      - bidforge_data:/app/data
+      - chroma_data:/app/embeddings_Store
+      - uploads_data:/app/backend/uploaded_docs
+      - ./past_projects.md:/app/past_projects.md:ro
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    init: true
+    shm_size: "1gb"
+    stop_grace_period: 30s
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/openapi.json', timeout=5)"
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
+
+    restart: unless-stopped
+
+  worker:
+    image: bidforge-backend:local
+    pull_policy: never
+
+    entrypoint: []
+    command:
+      - celery
+      - -A
+      - main:celery_app
+      - worker
+      - --loglevel=INFO
+      - --pool=solo
+      - --concurrency=1
+
+    env_file:
+      - .env
+
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHECKPOINT_DB_PATH: /app/data/langgraph_checkpoints.sqlite
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+    volumes:
+      - bidforge_data:/app/data
+      - chroma_data:/app/embeddings_Store
+      - ./past_projects.md:/app/past_projects.md:ro
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    init: true
+    shm_size: "1gb"
+    stop_grace_period: 60s
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8800}
+
+    ports:
+      - "127.0.0.1:3001:3000"
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    init: true
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  bidforge_data:
+  chroma_data:
+  uploads_data:
+

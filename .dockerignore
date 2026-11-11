@@ -1,0 +1,27 @@
+# Root-context fallback. The supplied Compose file uses ./backend and ./frontend
+# as separate build contexts, so backend/.dockerignore and frontend/.dockerignore
+# are the active ignore files for those two image builds.
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+.turbo/
+embeddings_Store/
+backend/embeddings_Store/
+backend/uploaded_docs/
+uploaded_docs/
+/data/
+/backend/data/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+past_projects.md

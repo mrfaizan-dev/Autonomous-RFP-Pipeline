@@ -1,0 +1,9 @@
+cd backend
+celery -A main.celery_app worker --loglevel=info --pool=solo
+
+
+cd backend
+python main.py
+
+cd frontend
+npm run dev

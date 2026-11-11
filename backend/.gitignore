@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+uploaded_docs/
+embeddings_Store/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Browser downloads and private project data
+**/downloaded_files/
+**/past_projects.md
+backend/.env
+past_projects.md

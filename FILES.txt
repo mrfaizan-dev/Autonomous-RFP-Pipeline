@@ -1,0 +1,19 @@
+Root:
+  docker-compose.yml
+  .env.example
+  .gitignore
+  .dockerignore
+  past_projects.md.example
+  DOCKER_SETUP_GUIDE.md
+
+Backend:
+  backend/Dockerfile
+  backend/.dockerignore
+  backend/.gitignore
+  backend/requirements.txt (UTF-8; original pins preserved; missing runtime packages added)
+
+Frontend:
+  frontend/Dockerfile
+  frontend/.dockerignore
+  frontend/.gitignore
+  frontend/next.config.mjs

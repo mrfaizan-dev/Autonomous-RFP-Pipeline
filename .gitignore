@@ -1,0 +1,48 @@
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.turbo/
+
+# Runtime data, vector stores, uploads, and databases
+embeddings_Store/
+**/embeddings_Store/
+backend/uploaded_docs/
+uploaded_docs/
+/data/
+/backend/data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+
+# Private RAG input and user data
+past_projects.md
+
+# Logs and OS/editor files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

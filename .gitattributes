@@ -1,0 +1,9 @@
+# Force fully ignore all TS, TSX, JS and CSS from language stats
+*.tsx linguist-vendored
+*.ts linguist-vendored
+*.css linguist-vendored
+*.json linguist-vendored
+
+# Block the directories completely
+frontend/ linguist-vendored
+frontend/**/* linguist-vendored
