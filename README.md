@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./docs/assets/hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to human-approved proposals" width="100%">
+<img src="./hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to human-approved proposals" width="100%">
 
 <br>
 
@@ -32,7 +32,7 @@
 
 It is designed to reduce repetitive proposal work while keeping claims grounded in available evidence. It does **not** automatically send or approve proposals.
 
-<img src="./docs/assets/pipeline-overview.svg" alt="RFP URL to scraping, analysis, portfolio retrieval, proposal writing, AI critique and human approval" width="100%">
+<img src="./pipeline-overview.svg" alt="RFP URL to scraping, analysis, portfolio retrieval, proposal writing, AI critique and human approval" width="100%">
 
 | Input | Output |
 |---|---|
@@ -150,7 +150,7 @@ flowchart TB
 
 > **Run all services:** FastAPI does not start Redis or the Celery worker. Start each separately as shown in [Windows Quick Start](#windows-quick-start).
 
-<img src="./docs/assets/architecture-layers.svg" alt="Compact visual summary of the frontend, API, background worker, AI orchestration, providers and storage layers" width="100%">
+<img src="./architecture-layers.svg" alt="Compact visual summary of the frontend, API, background worker, AI orchestration, providers and storage layers" width="100%">
 
 ## Complete Proposal Workflow
 
@@ -204,7 +204,7 @@ All stages are orchestrated in `backend/main.py` using LangGraph.
 
 **Proposal safeguards:** The writer is instructed not to invent clients, past projects, credentials, certifications, metrics, budgets, prices, deadlines, availability, guarantees, or business results. The usual target is 100–180 words (preferred 120–160), beginning with `Hi,` and ending with the configured sign-off `Best regards, Faizan`.
 
-<img src="./docs/assets/agent-review-loop.svg" alt="Proposal writer, independent critic and human reviewer connected through a controlled revision and approval loop" width="100%">
+<img src="./agent-review-loop.svg" alt="Proposal writer, independent critic and human reviewer connected through a controlled revision and approval loop" width="100%">
 
 ---
 
@@ -242,7 +242,7 @@ flowchart TB
 | Fallback 2 (`sp3`) | `backend/scraping_retr_2.py` | Nodriver in an isolated process with timeout/cleanup handling |
 | HTML cleaning (`chtm`) | `backend/bs4_engine.py` | Removes common page noise and converts HTML into readable text |
 
-<img src="./docs/assets/scraping-fallbacks.svg" alt="Main browser extraction followed by Playwright and Nodriver fallback engines, then HTML cleanup" width="100%">
+<img src="./scraping-fallbacks.svg" alt="Main browser extraction followed by Playwright and Nodriver fallback engines, then HTML cleanup" width="100%">
 
 **Possible extraction blockers:** login walls, CAPTCHA, anti-bot restrictions, incomplete dynamic content, network failures, and sites requiring complex interaction. The main RFP input is a URL; PDF uploads are not the RFP scraping input.
 
@@ -296,7 +296,7 @@ flowchart TB
     class WARN warn
 ```
 
-<img src="./docs/assets/rag-retrieval.svg" alt="Portfolio indexing and hybrid retrieval using Gemini embeddings, ChromaDB, BM25, LlamaIndex QueryFusionRetriever and Groq" width="100%">
+<img src="./rag-retrieval.svg" alt="Portfolio indexing and hybrid retrieval using Gemini embeddings, ChromaDB, BM25, LlamaIndex QueryFusionRetriever and Groq" width="100%">
 
 | Setting | Current implementation |
 |---|---|
@@ -760,9 +760,9 @@ Compose creates persistent volumes for Redis, SQLite checkpoints, ChromaDB, and 
 
 <div align="center">
 
-<img src="./docs/assets/footer-motion.gif" alt="Designed and developed by Mr Faizan — Software Developer and AI Engineering" width="520">
+<img src="./footer-motion.gif" alt="Designed and developed by Mr Faizan — Software Developer and AI Engineering" width="520">
 
-<img src="./docs/assets/footer-signature.svg" alt="Mr Faizan — Software Developer · AI Engineering · Full-Stack Systems" width="340">
+<img src=".s/footer-signature.svg" alt="Mr Faizan — Software Developer · AI Engineering · Full-Stack Systems" width="340">
 
 **Designed & Developed by [Mr Faizan](https://github.com/mrfaizan-dev)**  
 *Software Developer · AI Engineering · Full-Stack Systems*
