@@ -7,7 +7,6 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-285A84?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-087F78?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Agents-176B5B?style=flat-square)](https://www.langchain.com/langgraph)
-[![LangChain](https://img.shields.io/badge/LangChain-Orchestration-366B62?style=flat-square)](https://www.langchain.com/)
 [![LlamaIndex](https://img.shields.io/badge/LlamaIndex-RAG-6554A4?style=flat-square)](https://www.llamaindex.ai/)
 [![LLMs](https://img.shields.io/badge/LLMs-OpenRouter%20%7C%20Gemini%20%7C%20Groq-42566B?style=flat-square)](https://openrouter.ai/)
 [![Playwright](https://img.shields.io/badge/Playwright-Web%20Scraping-267A68?style=flat-square&logo=playwright&logoColor=white)](https://playwright.dev/)
