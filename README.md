@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="./docs/assets/brand-mark.svg" alt="Autonomous RFP Pipeline brand mark" width="64">
+<img src="./brand-mark.svg" alt="Autonomous RFP Pipeline brand mark" width="64">
 
-<img src="./docs/assets/hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to evidence-grounded proposal review" width="100%">
+<img src="./hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to evidence-grounded proposal review" width="100%">
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-285A84?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-087F78?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -16,7 +16,7 @@
 
 **Turn an RFP URL into a tailored, evidence-grounded proposal — checked by an independent AI critic and submitted for human review.**
 
-<sub><a href="./docs/assets/hero-still.svg">View the static SVG artwork</a></sub>
+<sub><a href="./hero-still.svg">View the static SVG artwork</a></sub>
 
 [Live Demo](https://rfpaiagent.vercel.app/) · [Windows Quick Start](#windows-quick-start) · [Architecture](#system-architecture) · [API](#review-and-api)
 
@@ -98,7 +98,7 @@ flowchart TB
     style DATA fill:#F5F4FB,stroke:#A6A0D0,color:#302A59
 ```
 
-<img src="./docs/assets/architecture-legend.svg" alt="Architecture diagram colour key" width="100%">
+<img src="./architecture-legend.svg" alt="Architecture diagram colour key" width="100%">
 
 ## End-to-End Workflow
 
@@ -457,9 +457,9 @@ The following is my broader working toolkit; **not every item is wired into this
 
 <div align="center">
 
-<img src="./docs/assets/footer-motion.gif" alt="Subtle animated network motif representing AI engineering and connected systems" width="72%">
+<img src="./footer-motion.gif" alt="Subtle animated network motif representing AI engineering and connected systems" width="72%">
 
-<img src="./docs/assets/footer-signature.svg" alt="Mr Faizan — Software Developer and AI Engineer specializing in Agentic AI, RAG, LLM engineering, web automation and full-stack development" width="100%">
+<img src="./footer-signature.svg" alt="Mr Faizan — Software Developer and AI Engineer specializing in Agentic AI, RAG, LLM engineering, web automation and full-stack development" width="100%">
 
 **[Mr Faizan](https://github.com/mrfaizan-dev)**  
 *Software Developer · AI Engineering · Agentic Systems · RAG · Web Automation · Full-Stack Development*
