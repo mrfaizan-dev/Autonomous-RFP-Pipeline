@@ -761,7 +761,6 @@ Compose creates persistent volumes for Redis, SQLite checkpoints, ChromaDB, and 
 
 <img src="./footer-motion.gif" alt="Designed and developed by Mr Faizan — Software Developer and AI Engineering" width="520">
 
-<img src="./footer-signature.svg" alt="Mr Faizan — Software Developer · AI Engineering · Full-Stack Systems" width="340">
 
 **Designed & Developed by [Mr Faizan](https://github.com/mrfaizan-dev)**  
 *Software Developer · AI Engineering · Full-Stack Systems*
