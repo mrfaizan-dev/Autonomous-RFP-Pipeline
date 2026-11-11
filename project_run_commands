@@ -1,6 +1,9 @@
+#for windows User
+
 cd "Autonomous-RFP-Pipeline-main\backend"
 if not exist .venv py -3.12 -m venv .venv
 .venv\Scripts\activate
+pip install -r requirements.txt
 python -m pip install --upgrade pip
 python main.py
 
@@ -9,6 +12,10 @@ cd "Autonomous-RFP-Pipeline-main\backend"
 if not exist .venv py -3.12 -m venv .venv
 .venv\Scripts\activate
 celery -A main.celery_app worker --loglevel=INFO --pool=solo
+
+
+# if not install npm than install
+npm install
 
 cd frontend
 npm run dev
