@@ -11,7 +11,7 @@ import React, {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { AnimatePresence, animate, motion, useInView } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   AlertTriangle,
@@ -37,9 +37,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import Lenis from "lenis";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -47,8 +44,7 @@ import remarkGfm from "remark-gfm";
 // It is no longer shown or editable anywhere in the UI.
 const API_BASE = normalizeBase(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8800");
 const HISTORY_STORAGE_KEY = "aegisiq_recent_runs_v1";
-const ADMIN_TOKEN_KEY = "aegisiq_admin_token";
-const DEFAULT_ADMIN_TOKEN = "super_secret_portfolio_key_123";
+// Admin secrets are entered per session and are never bundled or persisted.
 const MAX_HISTORY = 10;
 
 const POLL_INTERVAL_MS = 1800;
@@ -68,6 +64,8 @@ type ApiIndicatorKind = "idle" | "ok" | "bad" | "busy";
 
 type ProposalRun = {
   taskId: string | null;
+  // Latest Celery task (changes after approve/revise); taskId remains the run identity.
+  pollTaskId?: string;
   threadId: string | null;
   url: string;
   state: RunState;
@@ -185,7 +183,7 @@ function runStateInfo(run?: ProposalRun | null): RunInfo {
     },
     waiting_review: {
       label: "NEEDS REVIEW",
-      badgeClass: "border-emerald-300/25 bg-emerald-300/10 text-emerald-100",
+      badgeClass: "border-amber-300/30 bg-amber-300/10 text-amber-100",
       title: "Human review required",
       message:
         run?.message ||
@@ -250,7 +248,7 @@ function historyStateLabel(state?: RunState) {
 
 function historyStateClass(state?: RunState) {
   if (state === "completed") return "text-emerald-200 bg-emerald-300/10 border-emerald-300/20";
-  if (state === "waiting_review") return "text-cyan-100 bg-cyan-300/10 border-cyan-300/20";
+  if (state === "waiting_review") return "text-amber-100 bg-amber-300/10 border-amber-300/20";
   if (state === "failed") return "text-red-200 bg-red-300/10 border-red-300/20";
   if (state === "running" || state === "queued" || state === "submitting" || state === "resuming")
     return "text-amber-100 bg-amber-300/10 border-amber-300/20";
@@ -271,20 +269,8 @@ function Kicker({ children }: { children: React.ReactNode }) {
 }
 
 function CountUp({ to, pad = 2 }: { to: number; pad?: number }) {
-  const ref = useRef<HTMLSpanElement | null>(null);
-  const inView = useInView(ref, { once: true, margin: "-40px" });
-  useEffect(() => {
-    if (!inView || !ref.current) return;
-    const controls = animate(0, to, {
-      duration: 1.5,
-      ease: [0.2, 0.7, 0.2, 1],
-      onUpdate: (value) => {
-        if (ref.current) ref.current.textContent = String(Math.round(value)).padStart(pad, "0");
-      },
-    });
-    return () => controls.stop();
-  }, [inView, to, pad]);
-  return <span ref={ref}>{String(0).padStart(pad, "0")}</span>;
+  // These figures are informational, so render them directly without a JS animation loop.
+  return <span>{String(to).padStart(pad, "0")}</span>;
 }
 
 const rise = (delay = 0) => ({
@@ -322,7 +308,7 @@ const STACK = [
   { label: "Models & search", value: "OpenRouter · Groq · Nemotron Super-VL · Gemini Embeddings · ChromaDB" },
   { label: "Async backend", value: "FastAPI · Celery · Redis · asyncio · checkpoint resume" },
   { label: "Browser automation", value: "Playwright CDP · Nodriver · BeautifulSoup4" },
-  { label: "Frontend", value: "Next.js App Router · TypeScript · Tailwind · Framer Motion · GSAP · Lenis · ReactMarkdown" },
+  { label: "Frontend", value: "Next.js App Router · TypeScript · Tailwind · Framer Motion · ReactMarkdown" },
 ];
 
 const CAPS = [
@@ -334,7 +320,6 @@ const CAPS = [
 
 
 export default function Page() {
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const activeRunRef = useRef<ProposalRun | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
@@ -358,7 +343,7 @@ export default function Page() {
   const [formAlert, setFormAlert] = useState("");
   const [proposalAlert, setProposalAlert] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
-  const [adminToken, setAdminToken] = useState(DEFAULT_ADMIN_TOKEN);
+  const [adminToken, setAdminToken] = useState("");
   const [ragFile, setRagFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [adminBusy, setAdminBusy] = useState(false);
@@ -391,19 +376,42 @@ export default function Page() {
     if (!run || !run.taskId) return;
     setHistory((current) => {
       const updated: ProposalRun = { ...run, updatedAt: Date.now() };
-      const next = [updated, ...current.filter((item) => item.taskId !== run.taskId)].slice(0, MAX_HISTORY);
-      persistHistory(next);
-      return next;
+      return [updated, ...current.filter((item) => item.taskId !== run.taskId)].slice(0, MAX_HISTORY);
     });
-  }, [persistHistory]);
+  }, []);
 
   const updateActive = useCallback((patch: Partial<ProposalRun>, options: { save?: boolean } = {}) => {
     const current = activeRunRef.current;
     if (!current) return;
+
+    // Identical status responses are common while Celery is processing. Do not
+    // trigger a full-page React render just to update an invisible timestamp.
+    const hasVisibleChange = Object.keys(patch).some((key) =>
+      !Object.is(
+        current[key as keyof ProposalRun],
+        patch[key as keyof ProposalRun],
+      ),
+    );
+    if (!hasVisibleChange) return;
+
     const next: ProposalRun = { ...current, ...patch, updatedAt: Date.now() };
     activeRunRef.current = next;
     setActiveRun(next);
-    if (options.save !== false) upsertHistory(next);
+
+    // Avoid serializing/writing the full history on every unchanged Celery poll.
+    const meaningfulChange =
+      next.state !== current.state ||
+      next.pollTaskId !== current.pollTaskId ||
+      next.threadId !== current.threadId ||
+      next.draftProposal !== current.draftProposal ||
+      next.finalProposal !== current.finalProposal ||
+      next.criticStatus !== current.criticStatus ||
+      next.critiqueFeedback !== current.critiqueFeedback ||
+      next.ragWarning !== current.ragWarning ||
+      next.error !== current.error ||
+      next.lastPollError !== current.lastPollError;
+
+    if (options.save !== false && meaningfulChange) upsertHistory(next);
   }, [upsertHistory]);
 
   const apiFetch = useCallback(async (path: string, options: RequestInit & { timeout?: number } = {}) => {
@@ -412,8 +420,14 @@ export default function Page() {
     const timeoutId = window.setTimeout(() => controller.abort(), timeout);
     try {
       const headers = new Headers(fetchOptions.headers);
+
       headers.set("Accept", "application/json");
-      if (fetchOptions.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+      // Bypass ngrok free-tier browser interstitial for API requests.
+      headers.set("ngrok-skip-browser-warning", "1");
+
+      if (fetchOptions.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json"); }
       const response = await fetch(`${apiBase}${path}`, {
         ...fetchOptions,
         headers,
@@ -464,38 +478,12 @@ export default function Page() {
         activeRunRef.current = latest;
         setUrlInput(latest.url || "");
       }
-      const savedToken = localStorage.getItem(ADMIN_TOKEN_KEY);
-      if (savedToken) setAdminToken(savedToken);
+      // Admin token is intentionally not restored from browser storage.
     } catch (error) {
       console.warn("Could not restore local workspace:", error);
     } finally {
       setHydrated(true);
     }
-  }, []);
-
-  // Ambient motion: drifting light, scroll progress and hero parallax.
-  useEffect(() => {
-    if (!rootRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.registerPlugin(ScrollTrigger);
-    const lenis = new Lenis({ lerp: 0.085, smoothWheel: true, wheelMultiplier: 0.85 });
-    const raf = (time: number) => lenis.raf(time * 1000);
-    const updateScroll = () => ScrollTrigger.update();
-    lenis.on("scroll", updateScroll);
-    gsap.ticker.add(raf);
-    gsap.ticker.lagSmoothing(0);
-    const context = gsap.context(() => {
-      gsap.to(".blob-1", { x: 70, y: 46, duration: 14, repeat: -1, yoyo: true, ease: "sine.inOut" });
-      gsap.to(".blob-2", { x: -56, y: 54, duration: 17, repeat: -1, yoyo: true, ease: "sine.inOut" });
-      gsap.to(".blob-3", { x: 46, y: -44, duration: 20, repeat: -1, yoyo: true, ease: "sine.inOut" });
-      gsap.to(".scroll-progress", { scaleX: 1, ease: "none", scrollTrigger: { start: 0, end: "max", scrub: 0.3 } });
-      gsap.to(".hero-parallax", { yPercent: -8, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
-    }, rootRef);
-    return () => {
-      context.revert();
-      lenis.off("scroll", updateScroll);
-      lenis.destroy();
-      gsap.ticker.remove(raf);
-    };
   }, []);
 
   // Persist local-only history whenever it changes. Backend tasks/checkpoints
@@ -526,7 +514,8 @@ export default function Page() {
 
   const applyTaskStatus = useCallback((payload: ApiPayload, taskId: string) => {
     const current = activeRunRef.current;
-    if (!current || current.taskId !== taskId) return;
+    const currentTaskId = current?.pollTaskId || current?.taskId;
+    if (!current || currentTaskId !== taskId) return;
     const result: ApiPayload = payload && typeof payload.result === "object" && payload.result !== null ? payload.result : {};
     const nativeState = String(payload.state || payload.task_status || "PENDING").toUpperCase();
     const resultStatus = String(result.status || "").toUpperCase();
@@ -540,7 +529,7 @@ export default function Page() {
       threadId: payload.thread_id || result.thread_id || current.threadId,
       criticStatus: result.critique_status || current.criticStatus || "",
       critiqueFeedback: result.critique_feedback || current.critiqueFeedback || "",
-      ragWarning: result.rag_warning || "",
+      ragWarning: result.rag_warning ?? current.ragWarning ?? "",
       lastNativeState: nativeState,
       lastPollError: "",
       message: payload.message || result.message || current.message || "",
@@ -587,50 +576,124 @@ export default function Page() {
       return;
     }
 
-    if (["STARTED", "RETRY", "RECEIVED"].includes(nativeState)) {
-      updateActive({ ...common, state: "running", message: payload.message || (nativeState === "RETRY" ? "Celery is retrying the task." : "The worker is processing the request.") });
-      setApiIndicator({ kind: "busy", label: "Celery task running" });
+    if (nativeState === "PENDING" && current.state === "resuming") {
+      updateActive({
+        ...common,
+        state: "resuming",
+        message: "Resume task is queued and waiting for a Celery worker.",
+      });
+      setApiIndicator({ kind: "busy", label: "Waiting for resume worker" });
       return;
     }
 
-    updateActive({ ...common, state: "queued", message: payload.message || "Task is queued and waiting for a worker." });
+    if (["STARTED", "RETRY", "RECEIVED"].includes(nativeState)) {
+      updateActive({
+        ...common,
+        state: current.state === "resuming" ? "resuming" : "running",
+        message: payload.message || (nativeState === "RETRY"
+          ? "Celery is retrying the task."
+          : "The worker is processing the request."),
+      });
+      setApiIndicator({
+        kind: "busy",
+        label: current.state === "resuming" ? "Resume task running" : "Celery task running",
+      });
+      return;
+    }
+
+    updateActive({
+      ...common,
+      state: current.state === "resuming" ? "resuming" : "queued",
+      message: payload.message || "Task is queued and waiting for a worker.",
+    });
     setApiIndicator({ kind: "busy", label: "Waiting for Celery" });
   }, [pushToast, updateActive]);
 
-  // Poll only queued/running tasks. Cleanup cancels the pending timer when a
-  // task reaches review, completes, fails, or the user opens another run.
+  // Poll the latest Celery task. The original taskId remains the stable
+  // browser-history identity while pollTaskId changes after approve/revise.
   useEffect(() => {
     const run = activeRun;
-    if (!run?.taskId || !["queued", "running"].includes(run.state)) return;
+    const taskId = run?.pollTaskId || run?.taskId;
+
+    if (!run || !taskId || !["queued", "running", "resuming"].includes(run.state)) {
+      return;
+    }
+
     let cancelled = false;
-    const taskId = run.taskId;
+
     const schedule = (delay: number) => {
       pollTimerRef.current = window.setTimeout(async () => {
         pollTimerRef.current = null;
         if (cancelled) return;
+
         const current = activeRunRef.current;
-        if (!current || current.taskId !== taskId || !["queued", "running"].includes(current.state)) return;
+        const currentTaskId = current?.pollTaskId || current?.taskId;
+
+        if (
+          !current ||
+          currentTaskId !== taskId ||
+          !["queued", "running", "resuming"].includes(current.state)
+        ) {
+          return;
+        }
+
         try {
-          const payload = await apiFetch(`/api/task-status/${encodeURIComponent(taskId)}`, { method: "GET", timeout: 15000 });
+          const payload = await apiFetch(
+            `/api/task-status/${encodeURIComponent(taskId)}`,
+            { method: "GET", timeout: 15000 }
+          );
+
           if (!cancelled) applyTaskStatus(payload, taskId);
         } catch (error) {
           const latest = activeRunRef.current;
-          if (!cancelled && latest && latest.taskId === taskId && ["queued", "running"].includes(latest.state)) {
-            updateActive({ lastPollError: error instanceof Error ? error.message : String(error), message: `Status check failed: ${error instanceof Error ? error.message : String(error)}` });
+          const latestTaskId = latest?.pollTaskId || latest?.taskId;
+
+          if (
+            !cancelled &&
+            latest &&
+            latestTaskId === taskId &&
+            ["queued", "running", "resuming"].includes(latest.state)
+          ) {
+            const message = error instanceof Error ? error.message : String(error);
+            updateActive({
+              lastPollError: message,
+              message: `Status check failed: ${message}`,
+            });
             setApiIndicator({ kind: "bad", label: "Status check failed" });
           }
         }
+
         const latest = activeRunRef.current;
-        if (!cancelled && latest && latest.taskId === taskId && ["queued", "running"].includes(latest.state)) schedule(POLL_INTERVAL_MS);
+        const latestTaskId = latest?.pollTaskId || latest?.taskId;
+
+        if (
+          !cancelled &&
+          latest &&
+          latestTaskId === taskId &&
+          ["queued", "running", "resuming"].includes(latest.state)
+        ) {
+          schedule(POLL_INTERVAL_MS);
+        }
       }, delay);
     };
+
     schedule(run.state === "queued" ? 600 : POLL_INTERVAL_MS);
+
     return () => {
       cancelled = true;
-      if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
+      if (pollTimerRef.current !== null) {
+        window.clearTimeout(pollTimerRef.current);
+      }
       pollTimerRef.current = null;
     };
-  }, [activeRun?.taskId, activeRun?.state, apiBase, apiFetch, applyTaskStatus, updateActive]);
+  }, [
+    activeRun?.taskId,
+    activeRun?.pollTaskId,
+    activeRun?.state,
+    apiFetch,
+    applyTaskStatus,
+    updateActive,
+  ]);
 
   // Load the selected review draft into the editor only when its backend draft
   // actually changes; routine monitor updates must not overwrite local edits.
@@ -678,6 +741,7 @@ export default function Page() {
       if (!payload.task_id) throw new Error("FastAPI accepted the request but did not return task_id. Check the backend response.");
       const run: ProposalRun = {
         taskId: String(payload.task_id),
+        pollTaskId: String(payload.task_id),
         threadId: String(payload.thread_id || `proposal_thread_${payload.task_id}`),
         url: targetUrl,
         state: "queued",
@@ -709,18 +773,30 @@ export default function Page() {
 
   const manualRefresh = useCallback(async () => {
     const run = activeRunRef.current;
-    if (!run?.taskId) {
+    const taskId = run?.pollTaskId || run?.taskId;
+
+    if (!run || !taskId) {
       pushToast("There is no task ID to refresh.", true);
       return;
     }
-    if (!["queued", "running"].includes(run.state)) {
-      pushToast(run.state === "waiting_review" ? "This task is paused at the human-review checkpoint." : "This run is not actively polling. Select a queued or running run to refresh.");
+
+    if (!["queued", "running", "resuming"].includes(run.state)) {
+      pushToast(
+        run.state === "waiting_review"
+          ? "This task is paused at the human-review checkpoint."
+          : "This run is not actively polling. Select a queued or running run to refresh."
+      );
       return;
     }
+
     setRefreshBusy(true);
+
     try {
-      const payload = await apiFetch(`/api/task-status/${encodeURIComponent(run.taskId)}`, { method: "GET", timeout: 15000 });
-      applyTaskStatus(payload, run.taskId);
+      const payload = await apiFetch(
+        `/api/task-status/${encodeURIComponent(taskId)}`,
+        { method: "GET", timeout: 15000 }
+      );
+      applyTaskStatus(payload, taskId);
       pushToast("Task status refreshed.");
     } catch (error) {
       pushToast(error instanceof Error ? error.message : String(error), true);
@@ -731,82 +807,120 @@ export default function Page() {
 
   const resumeWorkflow = useCallback(async (action: "APPROVE" | "REVISE") => {
     const run = activeRunRef.current;
+
     if (!run?.threadId) {
-      showProposalError("No thread_id is available. Start a new proposal run and wait for the human-review checkpoint.");
+      showProposalError(
+        "No thread_id is available. Start a new proposal run and wait for the human-review checkpoint."
+      );
       return;
     }
+
     if (run.state !== "waiting_review") {
-      showProposalError("The backend is not currently at a human-review checkpoint for this run.");
+      showProposalError(
+        "The backend is not currently waiting at a human-review checkpoint."
+      );
       return;
     }
+
     if (resumeBusy) return;
+
     setProposalAlert("");
+
     const feedback = reviewFeedback.trim();
     const editedProposal = editorValue.trim();
+
     if (action === "REVISE" && !feedback) {
-      showProposalError("Revision feedback is required. Tell the writer exactly what to change.");
+      showProposalError(
+        "Revision feedback is required. Tell the writer exactly what to change."
+      );
       return;
     }
+
     if (action === "APPROVE" && !editedProposal) {
       showProposalError("The proposal is empty. Add the proposal text before approving.");
       return;
     }
 
     setResumeBusy({
-      title: action === "APPROVE" ? "Finalizing approved proposal…" : "Sending revision request…",
+      title: action === "APPROVE"
+        ? "Finalizing approved proposal…"
+        : "Sending revision request…",
       message: action === "APPROVE"
-        ? "Sending APPROVE and edited_proposal to the saved LangGraph checkpoint."
-        : "Sending your feedback to LangGraph. The writer and critic will run again before the next review.",
+        ? "Approval submitted. Waiting for Celery to finalize the proposal."
+        : "Revision submitted. Waiting for the Writer and Critic to finish.",
     });
 
     try {
       const body = action === "APPROVE"
-        ? { action: "APPROVE", feedback: feedback || null, edited_proposal: editedProposal }
-        : { action: "REVISE", feedback, edited_proposal: null };
-      const payload = await apiFetch(`/api/resume-proposal/${encodeURIComponent(run.threadId)}`, {
-        method: "POST",
-        body: JSON.stringify(body),
-        timeout: 120000,
-      });
-      const status = String(payload.status || "").toUpperCase();
-      const pausedAgain = Boolean(payload.needs_human_review || status === "PAUSED_FOR_HUMAN_REVIEW");
-      const common: Partial<ProposalRun> = {
-        threadId: payload.thread_id || run.threadId,
-        draftProposal: typeof payload.draft_proposal === "string" ? payload.draft_proposal : run.draftProposal,
-        finalProposal: typeof payload.final_proposal === "string" ? payload.final_proposal : "",
-        criticStatus: payload.critique_status || run.criticStatus,
-        critiqueFeedback: payload.critique_feedback || "",
-        ragWarning: payload.rag_warning || run.ragWarning,
-        message: payload.message || "",
-        error: "",
-        lastNativeState: "SUCCESS",
-      };
-      setReviewFeedback("");
-      if (pausedAgain) {
-        if (action === "REVISE" && typeof common.draftProposal === "string") {
-          editorSourceRef.current = "";
-          setEditorValue(common.draftProposal);
+        ? {
+            action: "APPROVE",
+            feedback: feedback || null,
+            edited_proposal: editedProposal,
+          }
+        : {
+            action: "REVISE",
+            feedback,
+            edited_proposal: null,
+          };
+
+      const payload = await apiFetch(
+        `/api/resume-proposal/${encodeURIComponent(run.threadId)}`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          timeout: 30000,
         }
-        updateActive({ ...common, state: "waiting_review", draftUpdatedFromServer: true, message: payload.message || "The revised draft is ready for another review." });
-        setProposalAlert("");
-        pushToast("A new draft is ready. Review it before the next action.");
-      } else if (status === "SUCCESS" && String(common.finalProposal || "").trim()) {
-        updateActive({ ...common, state: "completed", finalProposal: common.finalProposal, message: payload.message || "Proposal approved and finalized." });
-        setProposalAlert("");
-        pushToast("Proposal approved and finalized successfully.");
-      } else {
-        throw new Error(payload.message || "The resume endpoint returned an unexpected response.");
+      );
+
+      // The backend returns immediately with a NEW Celery task ID.
+      // Poll that task until it returns Success or another review checkpoint.
+      const resumeTaskId = String(payload.task_id || "").trim();
+
+      if (!resumeTaskId) {
+        throw new Error(
+          "Backend accepted the resume request but did not return a new task_id."
+        );
       }
+
+      updateActive({
+        pollTaskId: resumeTaskId,
+        threadId: payload.thread_id || run.threadId,
+        state: "resuming",
+        finalProposal: "",
+        criticStatus: action === "REVISE" ? "PENDING" : run.criticStatus,
+        critiqueFeedback: "",
+        error: "",
+        lastNativeState: "PENDING",
+        lastPollError: "",
+        message: action === "APPROVE"
+          ? "Approval submitted. Waiting for backend finalization."
+          : "Revision submitted. Writer and Critic are processing the changes.",
+      });
+
+      setReviewFeedback("");
+      setProposalAlert("");
+
+      pushToast(
+        action === "APPROVE"
+          ? "Approval submitted. Monitoring finalization."
+          : "Revision submitted. Monitoring the new draft."
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       showProposalError(message);
       pushToast(message, true);
-      const latest = activeRunRef.current;
-      if (latest && latest.state !== "waiting_review") updateActive({ state: "waiting_review" });
     } finally {
       setResumeBusy(null);
     }
-  }, [apiFetch, editorValue, pushToast, resumeBusy, reviewFeedback, showProposalError, updateActive]);
+  }, [
+    apiFetch,
+    editorValue,
+    pushToast,
+    resumeBusy,
+    reviewFeedback,
+    showProposalError,
+    updateActive,
+  ]);
 
   const copyText = useCallback(async (text: string, successMessage: string) => {
     if (!text) {
@@ -928,36 +1042,121 @@ export default function Page() {
 
   const submitRagUpload = useCallback(async () => {
     const token = adminToken.trim();
+
     if (!token) {
       setAdminAlert("Admin token is required.");
       return;
     }
+
     if (!ragFile) {
       setAdminAlert("Please select a file to upload.");
       return;
     }
-    try { localStorage.setItem(ADMIN_TOKEN_KEY, token); } catch { /* optional local setting */ }
+
     setAdminAlert("");
     setAdminBusy(true);
+
+    const originalName = ragFile.name;
     const formData = new FormData();
     formData.append("file", ragFile);
+
     try {
+      // Upload the file and receive the background Celery indexing task ID.
       const response = await fetch(`${apiBase}/api/admin/upload-rag-file`, {
         method: "POST",
-        headers: { "X-Admin-Token": token },
+        headers: {
+          "X-Admin-Token": token,
+          "ngrok-skip-browser-warning": "1",
+        },
         body: formData,
       });
-      let payload: ApiPayload = {};
-      try { payload = await response.json(); } catch { payload = {}; }
-      if (!response.ok) throw new Error(payload.detail || "Upload failed.");
-      pushToast(`Success: ${payload.message || "RAG updated successfully!"}`);
-      closeAdmin();
+
+      let uploadPayload: ApiPayload = {};
+      try {
+        uploadPayload = await response.json();
+      } catch {
+        throw new Error("Backend returned an invalid upload response.");
+      }
+
+      if (!response.ok) {
+        const detail = uploadPayload.detail || uploadPayload.message || "RAG upload failed.";
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+
+      const taskId = String(uploadPayload.task_id || "").trim();
+      if (!taskId) {
+        throw new Error(
+          "File was received, but the backend did not return an indexing task ID."
+        );
+      }
+
+      pushToast("File uploaded. Waiting for RAG indexing to finish.");
+
+      // The upload endpoint returns Processing. Verify the actual Celery result.
+      const maxAttempts = 180;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 2000);
+        });
+
+        let taskStatus: ApiPayload;
+
+        try {
+          taskStatus = await apiFetch(
+            `/api/task-status/${encodeURIComponent(taskId)}`,
+            { method: "GET", timeout: 15000 }
+          );
+        } catch (pollError) {
+          if (attempt === maxAttempts - 1) throw pollError;
+          continue;
+        }
+
+        const nativeState = String(
+          taskStatus.state || taskStatus.task_status || "PENDING"
+        ).toUpperCase();
+
+        if (nativeState === "FAILURE") {
+          throw new Error(
+            String(taskStatus.error || "RAG document indexing failed. Check the Celery worker logs.")
+          );
+        }
+
+        if (nativeState === "REVOKED") {
+          throw new Error("RAG indexing task was cancelled.");
+        }
+
+        if (nativeState === "SUCCESS") {
+          const result =
+            taskStatus.result && typeof taskStatus.result === "object"
+              ? taskStatus.result as ApiPayload
+              : {};
+
+          if (String(result.status || "").toLowerCase() !== "success") {
+            const detail = result.detail || result.message ||
+              "Celery completed, but RAG indexing did not report success.";
+            throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+          }
+
+          pushToast(
+            result.message || `${originalName} successfully indexed in the RAG knowledge base.`
+          );
+          closeAdmin();
+          return;
+        }
+      }
+
+      throw new Error(
+        `RAG indexing is taking longer than expected. Task ID: ${taskId}. Check the existing task before uploading again.`
+      );
     } catch (error) {
-      setAdminAlert(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setAdminAlert(message);
+      pushToast(message, true);
     } finally {
       setAdminBusy(false);
     }
-  }, [adminToken, apiBase, closeAdmin, pushToast, ragFile]);
+  }, [adminToken, apiBase, apiFetch, closeAdmin, pushToast, ragFile]);
 
   // Keep the existing keyboard shortcut and Ctrl/Cmd+Enter revision shortcut.
   useEffect(() => {
@@ -989,21 +1188,6 @@ export default function Page() {
   const editorEdited = editorValue.trim() !== (activeRun?.draftProposal || "").trim();
 
 
-  const [flowStep, setFlowStep] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => setFlowStep((value) => (value + 1) % 4), 2400);
-    return () => window.clearInterval(id);
-  }, []);
-
-  // Spotlight that follows the cursor inside any glass surface.
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "mouse") return;
-    const target = (event.target as HTMLElement | null)?.closest?.(".gl") as HTMLElement | null;
-    if (!target) return;
-    const rect = target.getBoundingClientRect();
-    target.style.setProperty("--mx", `${event.clientX - rect.left}px`);
-    target.style.setProperty("--my", `${event.clientY - rect.top}px`);
-  }, []);
 
   const isLive = Boolean(activeRun && ["submitting", "queued", "running", "resuming"].includes(activeRun.state));
   const reviewLabel =
@@ -1013,7 +1197,7 @@ export default function Page() {
     : "Not reached";
 
   return (
-    <div ref={rootRef} onPointerMove={handlePointerMove} className="aq relative min-h-screen overflow-x-hidden">
+    <div className="aq relative min-h-screen overflow-x-hidden">
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
       <link
@@ -1022,7 +1206,7 @@ export default function Page() {
       />
 
       <style jsx global>{`
-        html { background: #0a0b0e; scroll-behavior: auto; }
+        html { background: #0a0b0e; scroll-behavior: smooth; }
         body { margin: 0; background: #0a0b0e; }
 
         .aq {
@@ -1054,10 +1238,10 @@ export default function Page() {
 
         /* ---------- Atmosphere ---------- */
         .bg-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-        .blob { position: absolute; border-radius: 50%; filter: blur(90px); will-change: transform; }
-        .blob-1 { left: -12vw; top: -16vw; width: 48vw; height: 48vw; background: radial-gradient(circle, #ff7a3d, transparent 68%); opacity: .32; }
-        .blob-2 { right: -14vw; top: 16vh; width: 44vw; height: 44vw; background: radial-gradient(circle, #2f6f93, transparent 68%); opacity: .4; }
-        .blob-3 { left: 20vw; bottom: -24vw; width: 52vw; height: 42vw; background: radial-gradient(circle, #2c7a6b, transparent 68%); opacity: .26; }
+        .blob { position: absolute; border-radius: 50%; will-change: auto; }
+        .blob-1 { left: -12vw; top: -16vw; width: 48vw; height: 48vw; background: radial-gradient(circle, rgba(255,122,61,.22), transparent 68%); }
+        .blob-2 { right: -14vw; top: 16vh; width: 44vw; height: 44vw; background: radial-gradient(circle, rgba(47,111,147,.24), transparent 68%); }
+        .blob-3 { left: 20vw; bottom: -24vw; width: 52vw; height: 42vw; background: radial-gradient(circle, rgba(44,122,107,.16), transparent 68%); }
         .bg-grid {
           position: absolute; inset: 0;
           background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
@@ -1065,31 +1249,27 @@ export default function Page() {
           mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%);
           -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%);
         }
-        .bg-grain {
-          position: absolute; inset: 0; opacity: .07; mix-blend-mode: overlay;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
-        }
-        .scroll-progress { position: fixed; left: 0; top: 0; z-index: 90; height: 2px; width: 100%; transform: scaleX(0); transform-origin: 0 50%; background: linear-gradient(90deg, var(--ember), var(--ember2)); pointer-events: none; }
 
         /* ---------- Glass ---------- */
         .gl {
           position: relative; isolation: isolate; min-width: 0;
           border: 1px solid var(--line); border-radius: 22px;
           background: linear-gradient(160deg, rgba(255,255,255,.085), rgba(255,255,255,.028));
-          backdrop-filter: blur(24px) saturate(165%); -webkit-backdrop-filter: blur(24px) saturate(165%);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 34px 64px -34px rgba(0,0,0,.75);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 22px 44px -32px rgba(0,0,0,.72);
         }
-        .gl::before {
-          content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .35s ease;
-          background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(255,150,100,.16), transparent 62%);
+        /* The expensive glass blur is reserved for the admin dialog only. */
+        .admin-glass {
+          background: linear-gradient(145deg, rgba(42,47,60,.78), rgba(14,18,28,.84));
+          border: 1px solid rgba(255,255,255,.2);
+          backdrop-filter: blur(22px) saturate(160%);
+          -webkit-backdrop-filter: blur(22px) saturate(160%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 28px 90px rgba(0,0,0,.58), 0 0 0 1px rgba(255,138,76,.08);
         }
-        .gl:hover::before { opacity: 1; }
         .gl-lift { transition: transform .4s cubic-bezier(.2,.7,.2,1), border-color .3s ease; }
         .gl-lift:hover { transform: translateY(-4px); border-color: var(--line2); }
         .gl-edge::after {
           content: ""; position: absolute; left: 24px; right: 24px; top: -1px; height: 1px; pointer-events: none;
-          background: linear-gradient(90deg, transparent 0%, rgba(255,182,143,.95) 50%, transparent 100%); background-size: 200% 100%;
-          animation: edge 5s linear infinite;
+          background: linear-gradient(90deg, transparent 0%, rgba(255,182,143,.72) 50%, transparent 100%);
         }
         .inset { border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.34); box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
         .nav { border-radius: 18px; background: linear-gradient(160deg, rgba(20,22,28,.72), rgba(12,13,17,.66)); }
@@ -1114,7 +1294,7 @@ export default function Page() {
         .btn-primary { color: #1c0d04; background: linear-gradient(180deg, #ffa56d, #ff7d3f); border-color: rgba(255,200,165,.55); box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 14px 30px -12px rgba(255,125,63,.65); }
         .btn-primary::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); }
         .btn-primary:not(:disabled):hover::after { animation: shine .9s ease; }
-        .btn-ghost { color: var(--ink); background: rgba(255,255,255,.055); border-color: var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+        .btn-ghost { color: var(--ink); background: rgba(255,255,255,.055); border-color: var(--line); }
         .btn-ghost:not(:disabled):hover { background: rgba(255,255,255,.1); border-color: var(--line2); }
         .btn-warm { color: var(--ember2); background: rgba(255,138,76,.1); border-color: rgba(255,138,76,.32); }
         .btn-warm:not(:disabled):hover { background: rgba(255,138,76,.18); }
@@ -1133,27 +1313,33 @@ export default function Page() {
         .area:focus { border-color: rgba(255,150,100,.7); box-shadow: 0 0 0 4px rgba(255,138,76,.13), inset 0 1px 2px rgba(0,0,0,.4); }
         .area-mono { font-family: var(--mono); font-size: 13px; line-height: 1.75; color: #ece8df; }
 
-        .pill { display: inline-flex; align-items: center; gap: 9px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 12px; font-weight: 500; color: var(--ink2); }
+        .pill { display: inline-flex; align-items: center; gap: 9px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); font-size: 12px; font-weight: 500; color: var(--ink2); }
         .chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-width: 1px; border-style: solid; border-radius: 999px; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
         .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); }
         .dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(123,224,164,.16); }
         .dot-bad { background: var(--bad); box-shadow: 0 0 0 3px rgba(255,141,141,.16); }
         .dot-busy { background: var(--warn); animation: pulse 1.4s ease-in-out infinite; }
-        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ember); animation: ping 2.4s ease-out infinite; }
+        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ember); animation: pulse 2.4s ease-in-out infinite; }
         .ico { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.03)); color: var(--ember2); box-shadow: inset 0 1px 0 rgba(255,255,255,.15); }
         .err { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,141,141,.32); background: rgba(255,90,90,.1); color: #ffd5d5; font-size: 13px; line-height: 1.6; }
 
         /* ---------- Hero ---------- */
         .steps { position: relative; display: grid; gap: 4px; }
         .steps::before { content: ""; position: absolute; left: 19px; top: 24px; bottom: 24px; width: 1px; background: var(--line); }
-        .steps-fill { position: absolute; left: 19px; top: 24px; width: 1px; background: linear-gradient(var(--ember), var(--ember2)); box-shadow: 0 0 10px var(--ember); transition: height .9s cubic-bezier(.2,.7,.2,1); }
-        .step { position: relative; display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; border: 1px solid transparent; transition: background-color .45s ease, border-color .45s ease; }
-        .step .ico { color: var(--ink3); background: #14161c; transition: color .45s ease, border-color .45s ease, transform .45s ease; }
-        .step-t { font-size: 14px; font-weight: 600; color: var(--ink2); transition: color .45s ease; }
+        .steps-fill { position: absolute; left: 19px; top: 24px; bottom: 24px; width: 1px; background: linear-gradient(var(--ember), rgba(255,182,143,.3)); opacity: .72; }
+        .step { position: relative; display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; border: 1px solid transparent; animation: step-highlight 9.6s ease-in-out infinite both; }
+        .steps .step:nth-of-type(2) { animation-delay: -7.2s; }
+        .steps .step:nth-of-type(3) { animation-delay: -4.8s; }
+        .steps .step:nth-of-type(4) { animation-delay: -2.4s; }
+        .step .ico { color: var(--ink3); background: #14161c; animation: step-icon-highlight 9.6s ease-in-out infinite both; }
+        .steps .step:nth-of-type(2) .ico { animation-delay: -7.2s; }
+        .steps .step:nth-of-type(3) .ico { animation-delay: -4.8s; }
+        .steps .step:nth-of-type(4) .ico { animation-delay: -2.4s; }
+        .step-t { font-size: 14px; font-weight: 600; color: var(--ink2); }
         .step-d { margin-top: 2px; font-size: 12px; color: var(--ink3); }
         .step-tag { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink3); }
         .step-on { background: rgba(255,255,255,.06); border-color: var(--line); }
-        .step-on .ico { color: var(--ember2); border-color: rgba(255,138,76,.5); transform: scale(1.06); }
+        .step-on .ico { color: var(--ember2); border-color: rgba(255,138,76,.5); }
         .step-on .step-t { color: #fff; }
         .step-on .step-tag { color: var(--ember2); }
 
@@ -1222,13 +1408,19 @@ export default function Page() {
         .markdown-body hr { margin: 1.6rem 0; border: 0; border-top: 1px solid var(--line2); }
 
         /* ---------- Keyframes ---------- */
-        @keyframes edge { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+        @keyframes step-highlight {
+          0%, 23% { background: rgba(255,255,255,.06); border-color: var(--line); }
+          25%, 100% { background: transparent; border-color: transparent; }
+        }
+        @keyframes step-icon-highlight {
+          0%, 23% { color: var(--ember2); border-color: rgba(255,138,76,.5); transform: scale(1.04); }
+          25%, 100% { color: var(--ink3); border-color: rgba(255,255,255,.14); transform: scale(1); }
+        }
         @keyframes shine { from { left: -60%; } to { left: 140%; } }
         @keyframes sweep { to { transform: translateX(100%); } }
         @keyframes marquee { to { transform: translateX(-50%); } }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-        @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(255,138,76,.55); } 80%, 100% { box-shadow: 0 0 0 9px rgba(255,138,76,0); } }
 
         @media (max-width: 640px) {
           .panel-head, .panel-body { padding: 18px; }
@@ -1245,9 +1437,7 @@ export default function Page() {
         <div className="blob blob-2" />
         <div className="blob blob-3" />
         <div className="bg-grid" />
-        <div className="bg-grain" />
       </div>
-      <div aria-hidden="true" className="scroll-progress" />
 
       <div className="relative z-10">
         {/* ---------------- Header ---------------- */}
@@ -1298,8 +1488,8 @@ export default function Page() {
                 <span className="pulse-dot" />Agentic tender intelligence
               </motion.div>
               <h1 className="display mt-7 text-[clamp(3.2rem,8.2vw,6.6rem)]" aria-label="RFP in. Approved proposal out.">
-                <motion.span className="block" initial={{ opacity: 0, y: 34, filter: "blur(10px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.9, delay: 0.1, ease: [0.2, 0.7, 0.2, 1] }}>RFP in.</motion.span>
-                <motion.span className="block" initial={{ opacity: 0, y: 34, filter: "blur(10px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.9, delay: 0.25, ease: [0.2, 0.7, 0.2, 1] }}><em>Approved</em> proposal out.</motion.span>
+                <motion.span className="block" initial={{ opacity: 0, y: 34,  }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.1, ease: [0.2, 0.7, 0.2, 1] }}>RFP in.</motion.span>
+                <motion.span className="block" initial={{ opacity: 0, y: 34,  }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.25, ease: [0.2, 0.7, 0.2, 1] }}><em>Approved</em> proposal out.</motion.span>
               </h1>
               <motion.p initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.45 }} className="lead mt-7 max-w-[500px]">
                 AegisIQ reads the tender, grounds the draft in your portfolio, and holds it for human sign-off.
@@ -1320,11 +1510,11 @@ export default function Page() {
                   <span className="chip border-[rgba(255,138,76,.4)] bg-[rgba(255,138,76,.1)] text-[var(--ember2)]"><span className="pulse-dot" />Human-controlled</span>
                 </div>
                 <div className="steps">
-                  <span className="steps-fill" style={{ height: `calc(${(flowStep / 3) * 100}% * .86)` }} />
+                  <span className="steps-fill" />
                   {HERO_STEPS.map((step, index) => {
                     const StepIcon = step.icon;
                     return (
-                      <div key={step.title} className={`step ${flowStep === index ? "step-on" : ""}`}>
+                      <div key={step.title} className="step">
                         <span className="ico"><StepIcon className="h-[18px] w-[18px]" /></span>
                         <div className="min-w-0"><div className="step-t">{step.title}</div><div className="step-d">{step.detail}</div></div>
                         <span className="step-tag">{step.tag}</span>
@@ -1442,8 +1632,8 @@ export default function Page() {
                       </div>
                       <a href={safeUrl(activeRun?.url || "") || "#"} target="_blank" rel="noopener noreferrer" title={activeRun?.url || ""} className="mt-2 flex min-w-0 items-center gap-2 text-[12px] text-[var(--ember2)] hover:text-white"><span className="min-w-0 truncate">{activeRun?.url || "No URL"}</span><ExternalLink className="h-3.5 w-3.5 shrink-0" /></a>
 
-                      <div className="mb-2 mt-5 flex items-center justify-between"><span className="ovl">Task ID</span><button type="button" onClick={() => void copyText(activeRun?.taskId || "", "Task ID copied.")} disabled={!activeRun?.taskId} className="link-btn">Copy</button></div>
-                      <code className="inset mono block break-all px-4 py-3 text-[12px] leading-5 text-[var(--ink2)]">{activeRun?.taskId || "Not created yet"}</code>
+                      <div className="mb-2 mt-5 flex items-center justify-between"><span className="ovl">Task ID</span><button type="button" onClick={() => void copyText(activeRun?.pollTaskId || activeRun?.taskId || "", "Current task ID copied.")} disabled={!(activeRun?.pollTaskId || activeRun?.taskId)} className="link-btn">Copy</button></div>
+                      <code className="inset mono block break-all px-4 py-3 text-[12px] leading-5 text-[var(--ink2)]">{activeRun?.pollTaskId || activeRun?.taskId || "Not created yet"}</code>
 
                       <div className={`notice mt-4 ${activeRun?.state === "waiting_review" ? "notice-warm" : activeRun?.state === "failed" ? "notice-bad" : ""}`}>
                         <span className="ico" style={{ width: 36, height: 36, borderRadius: 10 }}><Clock3 className="h-[17px] w-[17px]" /></span>
@@ -1456,7 +1646,22 @@ export default function Page() {
                       <div className="my-5 h-px bg-[var(--line)]" />
                       <div className="meta">
                         <div><div className="ovl">Human review</div><b>{reviewLabel}</b></div>
-                        <div><div className="ovl">Critic status</div><b>{activeRun?.criticStatus || "Pending"}</b></div>
+                        <div>
+                          <div className="ovl">Critic status</div>
+                          <b
+                            className={
+                              String(activeRun?.criticStatus || "").toUpperCase() === "APPROVED"
+                                ? "text-emerald-300"
+                                : String(activeRun?.criticStatus || "").toUpperCase() === "REVISION_NEEDED"
+                                  ? "text-amber-200"
+                                  : String(activeRun?.criticStatus || "").toUpperCase() === "CRITIC_ERROR"
+                                    ? "text-red-300"
+                                    : "text-[var(--ink2)]"
+                            }
+                          >
+                            {activeRun?.criticStatus || "Pending"}
+                          </b>
+                        </div>
                         <div><div className="ovl">Last updated</div><b>{formatDate(activeRun?.updatedAt || activeRun?.createdAt)}</b></div>
                         <div><div className="ovl">RAG context</div><b>{activeRun?.ragWarning ? "Warning" : ["waiting_review", "completed"].includes(activeRun?.state || "") ? "Checked" : "In progress"}</b></div>
                       </div>
@@ -1483,12 +1688,12 @@ export default function Page() {
                   <span className="ico"><FileText className="h-5 w-5" /></span>
                   <div className="min-w-0">
                     <Kicker>02 — Review gate</Kicker>
-                    <h2 className="mt-1.5 text-[20px] font-semibold tracking-tight">{hasFinal ? "Final proposal" : hasReviewDraft ? "Review the draft" : activeRun?.state === "failed" ? "Generation failed" : "Proposal review"}</h2>
+                    <h2 className="mt-1.5 text-[20px] font-semibold tracking-tight">{hasFinal ? "Final proposal" : hasReviewDraft ? "Review the draft" : activeRun?.state === "resuming" ? "Processing proposal" : activeRun?.state === "failed" ? "Generation failed" : "Proposal review"}</h2>
                     <p className="sub mt-1">{hasFinal ? "Approved through the human checkpoint." : hasReviewDraft ? "Edit, add notes, then approve or request a revision." : "The draft appears here once review is reached."}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`chip ${hasFinal ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100" : hasReviewDraft ? "border-orange-300/35 bg-orange-300/10 text-orange-100" : activeRun?.state === "failed" ? "border-red-300/30 bg-red-300/10 text-red-100" : "border-white/15 bg-white/[0.05] text-[var(--ink2)]"}`}>{hasFinal ? "Approved" : hasReviewDraft ? "Review required" : activeRun?.state === "failed" ? "Task failed" : "No draft"}</span>
+                  <span className={`chip ${hasFinal ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100" : hasReviewDraft ? "border-orange-300/35 bg-orange-300/10 text-orange-100" : activeRun?.state === "failed" ? "border-red-300/30 bg-red-300/10 text-red-100" : "border-white/15 bg-white/[0.05] text-[var(--ink2)]"}`}>{hasFinal ? "Approved" : hasReviewDraft ? "Review required" : activeRun?.state === "resuming" ? "Processing" : activeRun?.state === "failed" ? "Task failed" : "No draft"}</span>
                   <button type="button" disabled={!hasDraft} onClick={downloadProposal} className="btn btn-ghost btn-sm"><Download className="h-3.5 w-3.5" />Download .md</button>
                   <button type="button" disabled={!hasDraft} onClick={() => void copyText(getProposalText(), hasFinal ? "Final proposal copied." : "Current proposal text copied.")} className="btn btn-ghost btn-sm"><Copy className="h-3.5 w-3.5" />Copy</button>
                 </div>
@@ -1504,7 +1709,7 @@ export default function Page() {
                 ) : hasReviewDraft ? (
                   <div className="space-y-5">
                     <div className="notice notice-warm items-center justify-between">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] font-semibold"><span className="dot dot-busy" />{activeRun?.criticStatus === "APPROVED" ? "Critic approved · Awaiting your decision" : "Draft editor · Awaiting your decision"}{activeRun?.criticStatus && activeRun.criticStatus !== "APPROVED" && <span className="font-normal text-[var(--ink2)]">/ Critic: {activeRun.criticStatus}</span>}</div>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] font-semibold"><span className={`dot ${String(activeRun?.criticStatus || "").toUpperCase() === "APPROVED" ? "dot-ok" : "dot-busy"}`} />{activeRun?.criticStatus === "APPROVED" ? "Critic approved · Awaiting your decision" : "Draft editor · Awaiting your decision"}{activeRun?.criticStatus && activeRun.criticStatus !== "APPROVED" && <span className="font-normal text-[var(--ink2)]">/ Critic: {activeRun.criticStatus}</span>}</div>
                       <div className="mono shrink-0 text-[11px] text-[var(--ink2)]">{words.toLocaleString()} {words === 1 ? "word" : "words"}</div>
                     </div>
                     <textarea aria-label="Proposal draft" value={editorValue} onChange={(event) => setEditorValue(event.target.value)} spellCheck className="area area-mono" style={{ minHeight: 440 }} placeholder="The proposal draft will appear here…" disabled={Boolean(resumeBusy)} />
@@ -1519,6 +1724,17 @@ export default function Page() {
                         <button type="button" disabled={Boolean(resumeBusy) || activeRun?.state !== "waiting_review"} onClick={() => void resumeWorkflow("REVISE")} className="btn btn-warm"><RotateCcw className="h-4 w-4" />Request revision</button>
                         <button type="button" disabled={Boolean(resumeBusy) || activeRun?.state !== "waiting_review"} onClick={() => void resumeWorkflow("APPROVE")} className="btn btn-primary"><Check className="h-4 w-4" />Approve &amp; finalize</button>
                       </div>
+                    </div>
+                  </div>
+                ) : activeRun?.state === "resuming" ? (
+                  <div className="notice notice-warm py-6">
+                    <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-[var(--ember2)]" />
+                    <div>
+                      <div className="text-[14px] font-semibold">Backend processing</div>
+                      <p className="sub mt-1">
+                        {activeRun.message || "The Celery worker is processing your approval or revision request."}
+                      </p>
+                      <p className="tiny mt-2">The result will appear here automatically.</p>
                     </div>
                   </div>
                 ) : hasFinal ? (
@@ -1567,7 +1783,7 @@ export default function Page() {
                         <td className="max-w-[300px]"><div className="truncate text-[13px] font-medium" title={run.url}>{run.url || "Untitled run"}</div></td>
                         <td className="mono whitespace-nowrap text-[11px] text-[var(--ink2)]">{formatDate(run.createdAt)}</td>
                         <td><span className={`chip ${historyStateClass(run.state)}`}><span className="dot" style={{ background: "currentColor", width: 6, height: 6 }} />{historyStateLabel(run.state)}</span></td>
-                        <td className="max-w-[185px]"><code className="mono block truncate text-[11px] text-[var(--ink3)]" title={run.taskId || "—"}>{run.taskId || "—"}</code></td>
+                        <td className="max-w-[185px]"><code className="mono block truncate text-[11px] text-[var(--ink3)]" title={run.pollTaskId || run.taskId || "—"}>{run.pollTaskId || run.taskId || "—"}</code></td>
                         <td><div className="flex justify-end gap-1.5">
                           <button type="button" onClick={() => selectHistoryRun(run.taskId)} className="btn btn-warm btn-sm" style={{ height: 32 }}>Open</button>
                           <button type="button" aria-label="Remove run from local history" title="Remove from local history" onClick={() => removeHistoryRun(run.taskId)} className="icon-btn" style={{ width: 32, height: 32 }}><X className="h-4 w-4" /></button>
@@ -1641,8 +1857,8 @@ export default function Page() {
       {/* ---------------- Knowledge admin ---------------- */}
       <AnimatePresence>
         {adminOpen && (
-          <motion.div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4" style={{ background: "rgba(5,6,8,.72)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) closeAdmin(); }}>
-            <motion.div role="dialog" aria-modal="true" aria-labelledby="admin-modal-title" initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.98 }} transition={{ duration: 0.3, ease: [0.2, 0.7, 0.2, 1] }} className="gl gl-edge my-auto w-full max-w-xl overflow-hidden" style={{ background: "linear-gradient(160deg, rgba(34,36,44,.92), rgba(16,17,22,.94))" }}>
+          <motion.div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4" style={{ background: "rgba(5,6,8,.78)" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) closeAdmin(); }}>
+            <motion.div role="dialog" aria-modal="true" aria-labelledby="admin-modal-title" initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.98 }} transition={{ duration: 0.3, ease: [0.2, 0.7, 0.2, 1] }} className="gl gl-edge admin-glass my-auto w-full max-w-xl overflow-hidden">
               <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-6 py-5">
                 <div><Kicker>Knowledge base</Kicker><h2 id="admin-modal-title" className="mt-1.5 text-[20px] font-semibold tracking-tight">Knowledge admin</h2><p className="sub mt-1">Upload a file to the portfolio RAG.</p></div>
                 <button type="button" onClick={closeAdmin} aria-label="Close admin modal" className="icon-btn"><X className="h-4 w-4" /></button>
@@ -1668,7 +1884,7 @@ export default function Page() {
               </div>
               <div className="flex flex-col-reverse justify-between gap-2 border-t border-[var(--line)] bg-black/20 px-6 py-4 sm:flex-row">
                 <button type="button" onClick={closeAdmin} className="btn btn-ghost">Close</button>
-                <button type="button" disabled={adminBusy} onClick={submitRagUpload} className="btn btn-primary">{adminBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{adminBusy ? "Uploading…" : "Upload & update RAG"}</button>
+                <button type="button" disabled={adminBusy} onClick={submitRagUpload} className="btn btn-primary">{adminBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{adminBusy ? "Uploading & indexing…" : "Upload & update RAG"}</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1679,7 +1895,7 @@ export default function Page() {
       <div className="pointer-events-none fixed bottom-4 right-4 z-[120] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2" aria-live="polite" aria-atomic="false">
         <AnimatePresence initial={false}>
           {toasts.map((item) => (
-            <motion.div key={item.id} layout initial={{ opacity: 0, x: 24, scale: 0.96 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 18, scale: 0.97 }} transition={{ duration: 0.28, ease: [0.2, 0.7, 0.2, 1] }}
+            <motion.div key={item.id} initial={{ opacity: 0, x: 24, scale: 0.96 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 18, scale: 0.97 }} transition={{ duration: 0.28, ease: [0.2, 0.7, 0.2, 1] }}
               className="gl pointer-events-auto flex items-start gap-3 px-4 py-3.5" style={{ borderRadius: 14, background: item.error ? "linear-gradient(160deg, rgba(70,26,26,.88), rgba(30,14,14,.9))" : "linear-gradient(160deg, rgba(34,36,44,.9), rgba(16,17,22,.92))", borderColor: item.error ? "rgba(255,141,141,.4)" : "var(--line2)" }}>
               <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full" style={{ background: item.error ? "rgba(255,141,141,.18)" : "rgba(123,224,164,.18)", color: item.error ? "var(--bad)" : "var(--ok)" }}>{item.error ? <AlertTriangle className="h-3 w-3" /> : <Check className="h-3 w-3" />}</span>
               <span className="min-w-0 flex-1 text-[13px] leading-5">{item.message}</span>
