@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" role="img" aria-labelledby="title desc">
+<title id="title">Autonomous RFP Pipeline</title><desc id="desc">A dark navy and teal interface illustration showing a pipeline from extraction to human review.</desc>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1D2B"/><stop offset=".55" stop-color="#123448"/><stop offset="1" stop-color="#173E4C"/></linearGradient><linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#4CCFB2"/><stop offset="1" stop-color="#E5B65A"/></linearGradient></defs>
+<rect width="1600" height="500" rx="28" fill="url(#bg)"/>
+<g opacity=".16" stroke="#8BB7C2" stroke-width="1"><path d="M0 80H1600M0 160H1600M0 240H1600M0 320H1600M0 400H1600"/><path d="M100 0V500M200 0V500M300 0V500M400 0V500M500 0V500M600 0V500M700 0V500M800 0V500M900 0V500M1000 0V500M1100 0V500M1200 0V500M1300 0V500M1400 0V500M1500 0V500"/></g>
+<g opacity=".12" fill="none" stroke="#78A9B8"><circle cx="1390" cy="75" r="190" stroke-width="2"/><circle cx="1390" cy="75" r="235" stroke-width="1"/><circle cx="1390" cy="75" r="280" stroke-width="1"/></g>
+<text x="88" y="102" fill="#8BE1D0" font-family="Inter,Arial,sans-serif" font-size="20" font-weight="700" letter-spacing="4">AGENTIC PROPOSAL WORKFLOW</text>
+<text x="88" y="190" fill="#F4F7FA" font-family="Inter,Arial,sans-serif" font-size="60" font-weight="800">AUTONOMOUS RFP</text>
+<text x="88" y="263" fill="#F4F7FA" font-family="Inter,Arial,sans-serif" font-size="60" font-weight="800">PIPELINE</text>
+<text x="91" y="328" fill="#C2D2DC" font-family="Inter,Arial,sans-serif" font-size="26">From public RFPs to evidence-grounded proposals.</text>
+<rect x="88" y="380" width="700" height="54" rx="27" fill="#173B4B" stroke="#376879"/>
+<text x="118" y="414" fill="#EAF3F7" font-family="Inter,Arial,sans-serif" font-size="17" font-weight="600" letter-spacing="1">EXTRACT  ·  ANALYZE  ·  RETRIEVE  ·  WRITE  ·  REVIEW</text>
+<g font-family="Inter,Arial,sans-serif"><path d="M1110 82V420" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round"/>
+<g><rect x="1160" y="54" width="340" height="62" rx="15" fill="#17374A" stroke="#42677A"/><circle cx="1194" cy="85" r="10" fill="#58D0B5"/><text x="1220" y="92" fill="#F4F7FA" font-size="20" font-weight="600">01  Extract RFP</text></g>
+<g><rect x="1160" y="137" width="340" height="62" rx="15" fill="#17374A" stroke="#42677A"/><circle cx="1194" cy="168" r="10" fill="#58D0B5"/><text x="1220" y="175" fill="#F4F7FA" font-size="20" font-weight="600">02  Analyze needs</text></g>
+<g><rect x="1160" y="220" width="340" height="62" rx="15" fill="#17374A" stroke="#42677A"/><circle cx="1194" cy="251" r="10" fill="#58D0B5"/><text x="1220" y="258" fill="#F4F7FA" font-size="20" font-weight="600">03  Retrieve evidence</text></g>
+<g><rect x="1160" y="303" width="340" height="62" rx="15" fill="#17374A" stroke="#42677A"/><circle cx="1194" cy="334" r="10" fill="#58D0B5"/><text x="1220" y="341" fill="#F4F7FA" font-size="20" font-weight="600">04  Draft proposal</text></g>
+<g><rect x="1160" y="386" width="340" height="62" rx="15" fill="#17374A" stroke="#D0A451"/><circle cx="1194" cy="417" r="10" fill="#E5B65A"/><text x="1220" y="424" fill="#F8E9C9" font-size="20" font-weight="600">05  Human review</text></g></g>
+</svg>
