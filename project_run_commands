@@ -1,9 +1,14 @@
-cd backend
-celery -A main.celery_app worker --loglevel=info --pool=solo
-
-
-cd backend
+cd "Autonomous-RFP-Pipeline-main\backend"
+if not exist .venv py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
 python main.py
+
+
+cd "Autonomous-RFP-Pipeline-main\backend"
+if not exist .venv py -3.12 -m venv .venv
+.venv\Scripts\activate
+celery -A main.celery_app worker --loglevel=INFO --pool=solo
 
 cd frontend
 npm run dev
