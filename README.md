@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".s/brand-mark.svg" alt="Autonomous RFP Pipeline brand mark" width="64">
+<img src="./brand-mark.svg" alt="Autonomous RFP Pipeline brand mark" width="64">
 
 <img src="./hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to evidence-grounded proposal review" width="100%">
 
