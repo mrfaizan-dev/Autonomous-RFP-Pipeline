@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/hero-banner.svg" alt="Autonomous RFP Pipeline: submit an RFP URL and get an evidence-grounded proposal, checked by an AI critic and approved by a human" width="100%">
+<img src="./hero-banner.svg" alt="Autonomous RFP Pipeline: submit an RFP URL and get an evidence-grounded proposal, checked by an AI critic and approved by a human" width="100%">
 
 <br>
 
@@ -31,7 +31,7 @@ Submit an RFP URL  →  Extract its requirements  →  Retrieve relevant portfol
         →  Generate a proposal  →  Critically evaluate it  →  Send it for human review
 ```
 
-<img src="docs/assets/pipeline-overview.svg" alt="The six pipeline stages: scrape, analyze, retrieve, write, critique and human review, with a revision loop from the critic back to the writer" width="100%">
+<img src./pipeline-overview.svg" alt="The six pipeline stages: scrape, analyze, retrieve, write, critique and human review, with a revision loop from the critic back to the writer" width="100%">
 
 > [!NOTE]
 > The web interface is currently labelled **AegisIQ**. This repository and this document use the name **Autonomous RFP Pipeline**. Some older files still use other names (see [Project Notes](#project-notes)).
