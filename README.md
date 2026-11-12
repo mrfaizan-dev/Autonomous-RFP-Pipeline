@@ -2,7 +2,7 @@
 
 <img src="./brand-mark.svg" alt="Autonomous RFP Pipeline brand mark" width="64">
 
-<img src="./hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to evidence-grounded proposal review" width="100%">
+<img src="./hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction t evidence-grounded proposal review" width="100%">
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-285A84?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-087F78?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
