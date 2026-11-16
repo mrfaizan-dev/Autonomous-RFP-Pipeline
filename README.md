@@ -4,6 +4,16 @@
 
 <img src="./hero-motion.gif" alt="Autonomous RFP Pipeline — an AI workflow from RFP extraction to evidence-grounded proposal review" width="100%">
 
+## 🎬 Watch Autonomous RFP Pipeline in Action
+
+**See how an AI-powered agentic workflow transforms a public RFP into an evidence-grounded proposal — from automated web extraction and portfolio retrieval to independent AI review and human approval.**
+
+<p align="center">
+  <a href="https://youtu.be/Bz_w748BjSg" target="_blank" rel="noopener noreferrer">
+    <img src="./autonomous-rfp-demo.svg" alt="Watch the Autonomous RFP Pipeline — AI-powered proposal generation demo" width="100%">
+  </a>
+</p>
+
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-285A84?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-087F78?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Agents-176B5B?style=flat-square)](https://www.langchain.com/langgraph)
